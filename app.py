@@ -15,34 +15,40 @@ def build_sidebar():
     tickers = [t+".SA" for t in tickers]
     #start_date = tz.localize(dt(2024,1,1))
     #end_date = tz.localize(dt.today())
-    start_date = st.date_input("De", format="DD/MM/YYYY",value=dt(2024,1,2))
-    end_date = st.date_input("Até", format="DD/MM/YYYY",value="today")
+    start_date = st.date_input("De", format="DD/MM/YYYY", value=dt(2024,1,2))
+    end_date = st.date_input("Até", format="DD/MM/YYYY", value="today")
 
     if tickers:
-        prices = yf.download(tickers, start = start_date, end = end_date, auto_adjust=True)["Close"]
+        prices = yf.download(tickers, start=start_date, end=end_date, auto_adjust=True)["Close"]
+        if len(tickers) == 1:
+            prices = prices.to_frame()
+            prices.columns = [tickers[0].rstrip(".SA")]
         prices.columns = prices.columns.str.rstrip(".SA")
+        prices['IBOV'] = yf.download("^BVSP", start=start_date, end=end_date)["Close"]
         return tickers, prices
     return None, None
 
 def build_main(tickers, prices):
-    weigths = np.ones(len(tickers))/len(tickers)
-    prices['portfolio'] = prices @ weigths
+    weights = np.ones(len(tickers))/len(tickers)
+    prices['portfolio'] = prices.drop("IBOV", axis=1) @ weights
     norm_prices = 100 * prices / prices.iloc[0]
     returns = prices.pct_change()[1:]
     vols = returns.std()*np.sqrt(252)
     rets = (norm_prices.iloc[-1] - 100) / 100
 
-    mygrid = grid(5 ,5 , 5 ,5 ,5 ,5, vertical_align="top")
+    mygrid = grid(5 ,5 ,5 ,5 ,5 , 5, vertical_align="top")
     for t in prices.columns:
         c = mygrid.container(border=True)
         c.subheader(t, divider="red")
-        colA, colB, colC, = c.columns(3)
+        colA, colB, colC = c.columns(3)
         if t == "portfolio":
-            colA.image("Images/pie-chart-dollar-svgrepo-com.svg")   
+            colA.image("Images/pie-chart-dollar-svgrepo-com.svg")
+        elif t == "IBOV":
+            colA.image("Images/pie-chart-svgrepo-com.svg")       
         else:     
             colA.image(f'https://raw.githubusercontent.com/thefintz/icones-b3/main/icones/{t}.png', width=85)    
         colB.metric(label="retorno", value=f"{rets[t]:.0%}")
-        colC.metric(label="volatidade", value=f"{vols[t]:.0%}")
+        colC.metric(label="volatilidade", value=f"{vols[t]:.0%}")
         style_metric_cards(background_color='rgba(255,255,255,0)')
 
     col1, col2 = st.columns(2, gap='large')
@@ -55,16 +61,28 @@ def build_main(tickers, prices):
         fig = px.scatter(
             x=vols,
             y=rets,
+            text=vols.index,
             color=rets/vols,
             color_continuous_scale=px.colors.sequential.Bluered_r
-        )       
-    #st.dataframe(prices)
+        )
+        fig.update_traces(
+            textfont_color='white',
+            marker=dict(size=45),
+            textfont_size=10,
+        )
+        fig.layout.yaxis.title = 'Retorno Total'
+        fig.layout.xaxis.title = 'Volatilidade (anualizada)'
+        fig.layout.height = 600
+        fig.layout.xaxis.tickformat = ".0%"
+        fig.layout.yaxis.tickformat = ".0%"
+        fig.layout.coloraxis.colorbar.title = 'Sharpe'
+        st.plotly_chart(fig, use_container_width=True)       
 
-st.set_page_config(layout="wide")    
+st.set_page_config(layout="wide")
 
 with st.sidebar:
     tickers, prices = build_sidebar()
 
+st.title('Analise ações brasileiras')
 if tickers:
     build_main(tickers, prices)
-st.title("Analise ações brasileiras")
